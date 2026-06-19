@@ -125,6 +125,15 @@ Partial-batch semantics: apply all resolvable targets, collect per-target result
 
 ## 10. First-test checklist (verify the one unconfirmed assumption)
 
+**RESULT — verified 2026-06-19 (PASS). Assumption holds; §5 stands, no fallback needed.**
+Tested headlessly via Claude Code's own resolver (`claude plugin list --json`, CLI v2.1.183), which is the same cascade that loads skill descriptions into context:
+- Baseline (throwaway dir, no project settings): `ponytail@ponytail` → `enabled: true` (scope user).
+- Wrote project `.claude/settings.json` = `{"enabledPlugins":{"ponytail@ponytail":false}}`; re-ran `claude plugin list --json` from that dir → `ponytail@ponytail` `enabled: false`. **Project-scope per-key override disables a user-enabled plugin.**
+- Sibling plugin (`frontend-design@…`) stayed `enabled: true` → it is a per-key merge, not wholesale.
+- `claude plugin disable <p> --scope project` writes byte-identical `{"enabledPlugins":{"<p>":false}}` → ccplug's output is format-compatible with native Claude Code.
+
+Original procedure (for reference):
+
 1. In a throwaway project, write `.claude/settings.json` with `{"enabledPlugins":{"vercel@claude-plugins-official":false}}`.
 2. Start a session there; confirm vercel's skills are gone from context while still enabled globally.
 3. If per-key project override does NOT disable a user-enabled plugin, fall back to documenting that `disable` must operate at `user` scope or via `/plugin disable --scope project`, and adjust §5.

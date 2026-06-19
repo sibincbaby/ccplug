@@ -44,6 +44,76 @@ pub fn list_table(plugins: &[Plugin], enabled: &dyn Fn(&str) -> bool) -> String 
     format!("{table}\n{} plugins", plugins.len())
 }
 
+/// One per-target outcome for `enable`/`disable` (spec §6).
+#[derive(serde::Serialize)]
+pub struct TargetResult {
+    pub target: String,
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+/// `enable`/`disable` — JSON result per spec §6.
+pub fn mutate_json(
+    file: &str,
+    scope: &str,
+    dry_run: bool,
+    results: &[TargetResult],
+    warnings: &[String],
+) -> Result<String> {
+    Ok(serde_json::to_string_pretty(&serde_json::json!({
+        "file": file,
+        "scope": scope,
+        "dryRun": dry_run,
+        "results": results,
+        "warnings": warnings,
+    }))?)
+}
+
+/// `enable`/`disable` — human summary.
+pub fn mutate_human(
+    file: &str,
+    dry_run: bool,
+    results: &[TargetResult],
+    warnings: &[String],
+    diff: Option<&str>,
+    wrote: bool,
+    backup: Option<&str>,
+) -> String {
+    let mut out = String::new();
+    for r in results {
+        let mark = if r.ok { "✓" } else { "✗" };
+        let detail = r
+            .action
+            .clone()
+            .or_else(|| r.reason.clone())
+            .unwrap_or_default();
+        out.push_str(&format!("{mark} {} ({}) {detail}\n", r.target, r.kind));
+    }
+    for w in warnings {
+        out.push_str(&format!("! {w}\n"));
+    }
+    if dry_run {
+        out.push_str(&format!("dry-run: no changes written to {file}\n"));
+        if let Some(d) = diff {
+            out.push_str(d);
+            out.push('\n');
+        }
+    } else if wrote {
+        out.push_str(&format!("wrote {file}\n"));
+        if let Some(b) = backup {
+            out.push_str(&format!("backup: {b}\n"));
+        }
+    } else {
+        out.push_str(&format!("no changes ({file} already up to date)\n"));
+    }
+    out.trim_end().to_string()
+}
+
 pub fn truncate(s: &str, max: usize) -> String {
     let chars: Vec<char> = s.chars().collect();
     if chars.len() <= max {

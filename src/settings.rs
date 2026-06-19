@@ -61,6 +61,85 @@ pub fn effective(project: &Path, home: &Path) -> Result<Effective> {
     })
 }
 
+/// A set of toggles to apply to one settings file.
+#[derive(Debug, Default)]
+pub struct Change {
+    pub set_plugin: Vec<(String, bool)>, // enabledPlugins[id] = bool
+    pub set_override: Vec<(String, String)>, // skillOverrides[name] = "on"/"off"
+}
+
+#[derive(Debug)]
+pub struct Applied {
+    pub wrote: bool,
+    pub backup: Option<PathBuf>,
+    pub after: String,
+}
+
+/// Read-modify-write a single settings file, touching only `enabledPlugins`/`skillOverrides`.
+/// Preserves every other key (and key order, via serde_json `preserve_order`). Never rewrites
+/// wholesale. Backs up to `<path>.bak` once before the first real write; `dry_run` writes nothing.
+// ponytail: serde_json reformats (drops comments / exact whitespace) but preserves all keys and
+// order — acceptable for settings.json; upgrade to a JSONC-preserving editor only if a user keeps
+// comments in these files.
+pub fn apply(path: &Path, change: &Change, dry_run: bool) -> Result<Applied> {
+    let existed = path.exists();
+    let original = read_value(path)?;
+    let before = serde_json::to_string_pretty(&original)?;
+
+    let mut next = original.clone();
+    let obj = next
+        .as_object_mut()
+        .ok_or_else(|| anyhow::anyhow!("{} is not a JSON object", path.display()))?;
+
+    if !change.set_plugin.is_empty() {
+        let ep = obj
+            .entry("enabledPlugins")
+            .or_insert_with(|| Value::Object(Map::new()));
+        let m = ep
+            .as_object_mut()
+            .ok_or_else(|| anyhow::anyhow!("enabledPlugins is not an object"))?;
+        for (id, on) in &change.set_plugin {
+            m.insert(id.clone(), Value::Bool(*on));
+        }
+    }
+    if !change.set_override.is_empty() {
+        let so = obj
+            .entry("skillOverrides")
+            .or_insert_with(|| Value::Object(Map::new()));
+        let m = so
+            .as_object_mut()
+            .ok_or_else(|| anyhow::anyhow!("skillOverrides is not an object"))?;
+        for (name, state) in &change.set_override {
+            m.insert(name.clone(), Value::String(state.clone()));
+        }
+    }
+
+    let after = serde_json::to_string_pretty(&next)?;
+    let changed = after != before;
+
+    let mut backup = None;
+    let mut wrote = false;
+    if changed && !dry_run {
+        if existed {
+            let bak = path.with_extension("json.bak");
+            std::fs::copy(path, &bak).with_context(|| format!("backing up {}", path.display()))?;
+            backup = Some(bak);
+        } else if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("creating {}", parent.display()))?;
+        }
+        std::fs::write(path, format!("{after}\n"))
+            .with_context(|| format!("writing {}", path.display()))?;
+        wrote = true;
+    }
+
+    Ok(Applied {
+        wrote,
+        backup,
+        after,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -119,5 +198,60 @@ mod tests {
         let a = eff.plugins.iter().find(|(k, ..)| k == "a@m").unwrap();
         assert_eq!(a.2, Scope::User);
         assert_eq!(eff.overrides, vec![("deploy".into(), "off".into())]);
+    }
+
+    #[test]
+    fn apply_preserves_unrelated_keys_and_backs_up() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        fs::write(
+            &path,
+            r#"{"$schema":"x","permissions":{"allow":["Bash(ls)"]},"enabledPlugins":{"keep@m":true}}"#,
+        )
+        .unwrap();
+
+        let change = Change {
+            set_plugin: vec![("vercel@m".into(), false)],
+            set_override: vec![("deploy".into(), "off".into())],
+        };
+        let applied = apply(&path, &change, false).unwrap();
+        assert!(applied.wrote);
+        assert!(applied.backup.unwrap().exists());
+
+        let v: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(v["$schema"], "x"); // unrelated key intact
+        assert_eq!(v["permissions"]["allow"][0], "Bash(ls)");
+        assert_eq!(v["enabledPlugins"]["keep@m"], true); // existing toggle intact
+        assert_eq!(v["enabledPlugins"]["vercel@m"], false); // new toggle applied
+        assert_eq!(v["skillOverrides"]["deploy"], "off");
+    }
+
+    #[test]
+    fn apply_creates_missing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".claude/settings.json");
+        let change = Change {
+            set_plugin: vec![("x@m".into(), true)],
+            ..Default::default()
+        };
+        let applied = apply(&path, &change, false).unwrap();
+        assert!(applied.wrote);
+        assert!(applied.backup.is_none());
+        let v: Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(v["enabledPlugins"]["x@m"], true);
+    }
+
+    #[test]
+    fn dry_run_writes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let change = Change {
+            set_plugin: vec![("x@m".into(), true)],
+            ..Default::default()
+        };
+        let applied = apply(&path, &change, true).unwrap();
+        assert!(!applied.wrote);
+        assert!(!path.exists());
+        assert!(applied.after.contains("x@m"));
     }
 }

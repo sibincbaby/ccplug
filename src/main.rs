@@ -6,24 +6,32 @@ mod target;
 
 use anyhow::Result;
 use clap::Parser;
+use std::io::Read;
 use std::path::PathBuf;
 
-use cli::{Cli, Command, CommonFlags};
+use cli::{Cli, Command, CommonFlags, MutateArgs};
+use output::TargetResult;
+use settings::Change;
+use target::{resolve, Kind};
 
 fn main() {
-    if let Err(e) = run(Cli::parse()) {
-        eprintln!("error: {e:#}");
-        std::process::exit(1);
-    }
+    let code = match run(Cli::parse()) {
+        Ok(code) => code,
+        Err(e) => {
+            eprintln!("error: {e:#}");
+            1
+        }
+    };
+    std::process::exit(code);
 }
 
-fn run(cli: Cli) -> Result<()> {
+/// Returns the process exit code (0 ok; 2 = every target failed).
+fn run(cli: Cli) -> Result<i32> {
     match cli.command {
-        Command::List(f) => cmd_list(f),
-        Command::Status(f) => cmd_status(f),
-        Command::Enable(_) | Command::Disable(_) => {
-            anyhow::bail!("enable/disable land after the spec §10 empirical pre-check")
-        }
+        Command::List(f) => cmd_list(f).map(|_| 0),
+        Command::Status(f) => cmd_status(f).map(|_| 0),
+        Command::Enable(a) => cmd_mutate(a, true),
+        Command::Disable(a) => cmd_mutate(a, false),
     }
 }
 
@@ -109,4 +117,149 @@ fn cmd_status(f: CommonFlags) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Collect targets from positional args, then `--from FILE`, then `--stdin` (JSON arrays).
+fn gather_targets(a: &MutateArgs) -> Result<Vec<String>> {
+    let mut targets = a.targets.clone();
+    if let Some(file) = &a.from {
+        let text =
+            std::fs::read_to_string(file).map_err(|e| anyhow::anyhow!("reading {file}: {e}"))?;
+        targets.extend(parse_target_array(&text)?);
+    }
+    if a.stdin {
+        let mut text = String::new();
+        std::io::stdin().read_to_string(&mut text)?;
+        targets.extend(parse_target_array(&text)?);
+    }
+    if targets.is_empty() {
+        anyhow::bail!("no targets given (positional, --from FILE, or --stdin)");
+    }
+    Ok(targets)
+}
+
+fn parse_target_array(text: &str) -> Result<Vec<String>> {
+    serde_json::from_str::<Vec<String>>(text)
+        .map_err(|e| anyhow::anyhow!("expected a JSON array of target strings: {e}"))
+}
+
+fn cmd_mutate(a: MutateArgs, enable: bool) -> Result<i32> {
+    let f = a.common.clone();
+    let (home, project) = dirs_from(&f)?;
+    let targets = gather_targets(&a)?;
+
+    let plugins = inventory::load(&home)?;
+    let loose = inventory::loose_skills(&project, &home);
+
+    let mut change = Change::default();
+    let mut results = Vec::new();
+    let mut warnings = Vec::new();
+    let mut any_ok = false;
+
+    for raw in &targets {
+        let r = resolve(raw, &plugins, &loose);
+        let kind = match r.kind {
+            Kind::Plugin => "plugin",
+            Kind::PluginGlob => "plugin-glob",
+            Kind::PluginSkill => "plugin-skill",
+            Kind::LooseSkill => "loose-skill",
+        };
+
+        if !r.ok {
+            results.push(TargetResult {
+                target: raw.clone(),
+                kind: kind.to_string(),
+                ok: false,
+                action: None,
+                reason: r.reason.clone(),
+            });
+            continue;
+        }
+        any_ok = true;
+        let action = if enable { "enabled" } else { "disabled" };
+
+        match r.kind {
+            Kind::Plugin | Kind::PluginGlob => {
+                let id = r.plugin_id.clone().unwrap();
+                change.set_plugin.push((id.clone(), enable));
+                if r.kind == Kind::PluginGlob {
+                    warnings.push(format!(
+                        "{raw}: per-skill plugin control is unavailable in v1; {action} the whole plugin {id}"
+                    ));
+                }
+                if !enable {
+                    if let Some(p) = plugins.iter().find(|p| p.id == id) {
+                        let extra: Vec<&str> = p
+                            .provides
+                            .iter()
+                            .map(String::as_str)
+                            .filter(|x| matches!(*x, "mcp" | "lsp" | "agents"))
+                            .collect();
+                        if !extra.is_empty() {
+                            warnings.push(format!(
+                                "{id} also provides {}; disabling removes them here",
+                                extra.join(", ")
+                            ));
+                        }
+                    }
+                }
+                results.push(TargetResult {
+                    target: raw.clone(),
+                    kind: kind.to_string(),
+                    ok: true,
+                    action: Some(action.to_string()),
+                    reason: None,
+                });
+            }
+            Kind::LooseSkill => {
+                let name = r.skill.clone().unwrap();
+                let state = if enable { "on" } else { "off" };
+                change.set_override.push((name, state.to_string()));
+                results.push(TargetResult {
+                    target: raw.clone(),
+                    kind: kind.to_string(),
+                    ok: true,
+                    action: Some(action.to_string()),
+                    reason: None,
+                });
+            }
+            Kind::PluginSkill => unreachable!("plugin-skill is never ok in v1"),
+        }
+    }
+
+    let path = settings::scope_path(f.scope, &project, &home);
+    let file = path.to_string_lossy().to_string();
+    let applied = settings::apply(&path, &change, a.dry_run)?;
+
+    if f.json {
+        println!(
+            "{}",
+            output::mutate_json(&file, f.scope.as_str(), a.dry_run, &results, &warnings)?
+        );
+    } else {
+        let diff = if a.dry_run {
+            Some(applied.after.as_str())
+        } else {
+            None
+        };
+        let backup = applied
+            .backup
+            .as_ref()
+            .map(|p| p.to_string_lossy().into_owned());
+        println!(
+            "{}",
+            output::mutate_human(
+                &file,
+                a.dry_run,
+                &results,
+                &warnings,
+                diff,
+                applied.wrote,
+                backup.as_deref(),
+            )
+        );
+    }
+
+    // Exit non-zero only if EVERY target failed.
+    Ok(if any_ok { 0 } else { 2 })
 }

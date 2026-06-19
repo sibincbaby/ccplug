@@ -10,7 +10,9 @@ pub struct Plugin {
     pub name: String,
     pub marketplace: String,
     pub version: String,
+    // ponytail: kept though only tests read it today — v2 skill extraction copies from here.
     #[serde(skip)]
+    #[allow(dead_code)]
     pub install_path: PathBuf,
     pub provides: Vec<String>,
     pub skills: Vec<Skill>,
