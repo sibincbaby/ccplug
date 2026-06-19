@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0
+
+Cost-aware listing.
+
+- `ccplug list` now shows an estimated **always-on token cost** per plugin (COST column), plus a footer total of enabled vs all cost — so you can see what each plugin costs before deciding to enable/disable it.
+- `ccplug list --sort cost` ranks the most expensive plugins first.
+- `ccplug status` reports `enabledEst` — the project's estimated always-on cost after the cascade.
+- `--json`: `list` gains `estTokens` per plugin and a `summary{totalEst,enabledEst}`; `status` gains `enabledEst`.
+- Cost is a local estimate from skill descriptions (`chars/4`, per the spec §2 cost model); `claude plugin details <name>` gives exact numbers. No new dependencies, no subprocess — stays fast.
+- Design note: project-type **presets** and **per-skill** (plugin-owned) toggling were evaluated and deliberately rejected — presets ossify a per-project-varying mix, and per-skill control requires fragile extraction that severs a skill from its plugin's hooks/MCP/commands. The plugin remains the unit of on/off.
+
 ## 0.1.0
 
 Initial release.

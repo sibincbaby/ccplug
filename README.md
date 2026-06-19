@@ -23,11 +23,14 @@ Or from a checkout: `cargo install --path .`
 ## Commands
 
 ```
-ccplug list                  # every global plugin + its skills + enabled state
+ccplug list                  # every global plugin + its skills + enabled state + est cost
+ccplug list --sort cost      # rank plugins by estimated always-on token cost (expensive first)
 ccplug status                # what is EFFECTIVELY active in the cwd project after the cascade
 ccplug enable  <target>...   # bulk enable
 ccplug disable <target>...   # bulk disable
 ```
+
+`list` shows a **COST** column — an estimate of each plugin's always-on token cost (its skill descriptions, which load every session) — with a footer totalling enabled vs all. `status` reports the project's enabled cost (`enabledEst`). Cost is a local `chars/4` estimate; `claude plugin details <name>` gives exact numbers.
 
 ### Targets
 
