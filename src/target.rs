@@ -71,26 +71,24 @@ pub fn resolve(raw: &str, plugins: &[Plugin], loose: &[Skill]) -> Resolved {
 
         // plugin:skill
         Some(skill) => {
-            match resolve_plugin(left, plugins) {
-                Ok(id) => {
-                    let owns = plugins
-                        .iter()
-                        .find(|p| p.id == id)
-                        .map(|p| p.skills.iter().any(|s| s.name == skill))
-                        .unwrap_or(false);
-                    if owns {
-                        // plugin-owned skill: no native per-project toggle in v1.
-                        return Resolved {
-                            raw: raw.to_string(),
-                            kind: Kind::PluginSkill,
-                            plugin_id: Some(id),
-                            skill: Some(skill.to_string()),
-                            ok: false,
-                            reason: Some("unsupported-v1".to_string()),
-                        };
-                    }
+            // If `left` names a plugin that owns `skill`, it's a plugin-owned skill
+            // (unsupported in v1). Otherwise fall through to the loose-skill lookup.
+            if let Ok(id) = resolve_plugin(left, plugins) {
+                let owns = plugins
+                    .iter()
+                    .find(|p| p.id == id)
+                    .map(|p| p.skills.iter().any(|s| s.name == skill))
+                    .unwrap_or(false);
+                if owns {
+                    return Resolved {
+                        raw: raw.to_string(),
+                        kind: Kind::PluginSkill,
+                        plugin_id: Some(id),
+                        skill: Some(skill.to_string()),
+                        ok: false,
+                        reason: Some("unsupported-v1".to_string()),
+                    };
                 }
-                Err(_) => {} // left may not name a plugin; fall through to loose lookup
             }
 
             if loose.iter().any(|s| s.name == skill) {
