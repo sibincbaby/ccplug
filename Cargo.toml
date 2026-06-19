@@ -1,0 +1,29 @@
+[package]
+name = "ccplug"
+version = "0.1.0"
+edition = "2021"
+description = "Manage which Claude Code plugins and skills are enabled per project"
+repository = "https://github.com/sibincbaby/ccplug"
+homepage = "https://github.com/sibincbaby/ccplug"
+license = "MIT"
+readme = "README.md"
+keywords = ["claude", "cli", "plugins", "skills", "ai"]
+categories = ["command-line-utilities"]
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+comfy-table = "7"
+rayon = "1"
+dirs = "5"
+anyhow = "1"
+
+[dev-dependencies]
+assert_cmd = "2"
+predicates = "3"
+tempfile = "3"
+
+[profile.release]
+strip = true
+lto = true
