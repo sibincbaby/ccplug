@@ -33,6 +33,12 @@ pub struct CommonFlags {
     #[arg(long, value_enum, default_value_t = Scope::Project)]
     pub scope: Scope,
 
+    /// Sort `list` output (default: name). `cost` ranks expensive plugins first.
+    // ponytail: lives on the shared flag; only `list` reads it, `status` ignores it —
+    // cheaper than splitting List into its own args struct.
+    #[arg(long, value_enum, default_value_t = SortKey::Name)]
+    pub sort: SortKey,
+
     /// Override ~/.claude location (for tests)
     #[arg(long, hide = true)]
     pub home_dir: Option<String>,
@@ -68,6 +74,13 @@ pub enum Scope {
     Project,
     Local,
     User,
+}
+
+#[derive(ValueEnum, Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SortKey {
+    #[default]
+    Name,
+    Cost,
 }
 
 impl Scope {

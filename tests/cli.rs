@@ -142,3 +142,57 @@ fn stdin_json_array_targets() {
     let v: Value = serde_json::from_slice(&out.get_output().stdout).unwrap();
     assert_eq!(v["results"][0]["target"], "demo");
 }
+
+/// Two user-scope plugins: `cheap` (tiny description) and `pricey` (long description).
+fn fake_home_two(home: &Path) {
+    let pdir = home.join(".claude/plugins");
+    fs::create_dir_all(&pdir).unwrap();
+    let mut entries = serde_json::Map::new();
+    for (name, desc) in [("cheap", "x"), ("pricey", &"word ".repeat(200)[..])] {
+        let install = home.join(format!("install/{name}/1.0.0"));
+        fs::create_dir_all(install.join("skills/s")).unwrap();
+        fs::write(
+            install.join("skills/s/SKILL.md"),
+            format!("---\nname: {name}-skill\ndescription: {desc}\n---\n"),
+        )
+        .unwrap();
+        entries.insert(
+            format!("{name}@mkt"),
+            serde_json::json!([{"scope":"user","installPath":install.to_str().unwrap(),"version":"1.0.0"}]),
+        );
+    }
+    let json = serde_json::json!({ "version": 2, "plugins": entries });
+    fs::write(pdir.join("installed_plugins.json"), json.to_string()).unwrap();
+
+    // Claude Code records an explicit enabledPlugins:true per install at user scope.
+    fs::write(
+        home.join(".claude/settings.json"),
+        r#"{"enabledPlugins":{"cheap@mkt":true,"pricey@mkt":true}}"#,
+    )
+    .unwrap();
+}
+
+#[test]
+fn list_sort_cost_orders_expensive_first() {
+    let home = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    fake_home_two(home.path());
+
+    let out = run(
+        home.path(),
+        project.path(),
+        &["list", "--sort", "cost", "--json"],
+    )
+    .success();
+    let v: Value = serde_json::from_slice(&out.get_output().stdout).unwrap();
+    assert_eq!(
+        v["plugins"][0]["name"], "pricey",
+        "expensive plugin should sort first"
+    );
+    let pricey = v["plugins"][0]["estTokens"].as_u64().unwrap();
+    let cheap = v["plugins"][1]["estTokens"].as_u64().unwrap();
+    assert!(pricey > cheap);
+    // both enabled at user scope → enabledEst == totalEst
+    assert_eq!(v["summary"]["enabledEst"], v["summary"]["totalEst"]);
+    assert_eq!(v["summary"]["totalEst"].as_u64().unwrap(), pricey + cheap);
+}

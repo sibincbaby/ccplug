@@ -3,27 +3,44 @@ use anyhow::Result;
 use comfy_table::presets::UTF8_BORDERS_ONLY;
 use comfy_table::Table;
 
-/// `ccplug list` — JSON per spec §6, with effective `enabled` injected per plugin.
+/// `ccplug list` — JSON per spec §6, with effective `enabled` + `estTokens` per plugin
+/// and a `summary` of total / enabled estimated cost.
 pub fn list_json(plugins: &[Plugin], enabled: &dyn Fn(&str) -> bool) -> Result<String> {
+    let mut total = 0u32;
+    let mut enabled_total = 0u32;
     let arr: Vec<serde_json::Value> = plugins
         .iter()
         .map(|p| {
+            let cost = p.est_tokens();
+            total += cost;
+            if enabled(&p.id) {
+                enabled_total += cost;
+            }
             let mut v = serde_json::to_value(p).unwrap();
             v["enabled"] = serde_json::Value::Bool(enabled(&p.id));
+            v["estTokens"] = serde_json::Value::from(cost);
             v
         })
         .collect();
-    Ok(serde_json::to_string_pretty(
-        &serde_json::json!({ "plugins": arr }),
-    )?)
+    Ok(serde_json::to_string_pretty(&serde_json::json!({
+        "plugins": arr,
+        "summary": { "totalEst": total, "enabledEst": enabled_total },
+    }))?)
 }
 
-/// `ccplug list` — human table: one row per plugin, skills summarized.
+/// `ccplug list` — human table with a COST column and total/enabled cost footer.
 pub fn list_table(plugins: &[Plugin], enabled: &dyn Fn(&str) -> bool) -> String {
     let mut table = Table::new();
     table.load_preset(UTF8_BORDERS_ONLY);
-    table.set_header(vec!["PLUGIN", "ON", "PROVIDES", "SKILLS"]);
+    table.set_header(vec!["PLUGIN", "ON", "COST", "PROVIDES", "SKILLS"]);
+    let (mut total, mut enabled_total) = (0u32, 0u32);
     for p in plugins {
+        let cost = p.est_tokens();
+        total += cost;
+        let on = enabled(&p.id);
+        if on {
+            enabled_total += cost;
+        }
         let skills = p
             .skills
             .iter()
@@ -32,16 +49,17 @@ pub fn list_table(plugins: &[Plugin], enabled: &dyn Fn(&str) -> bool) -> String 
             .join(", ");
         table.add_row(vec![
             p.id.clone(),
-            if enabled(&p.id) {
-                "✓".into()
-            } else {
-                "·".into()
-            },
+            if on { "✓".into() } else { "·".into() },
+            format!("~{cost}"),
             p.provides.join(","),
             truncate(&skills, 60),
         ]);
     }
-    format!("{table}\n{} plugins", plugins.len())
+    format!(
+        "{table}\n{} plugins | cost ~{enabled_total} tok enabled / ~{total} tok all\n\
+         cost = est. always-on tokens from skill descriptions; exact: claude plugin details <name>",
+        plugins.len()
+    )
 }
 
 /// One per-target outcome for `enable`/`disable` (spec §6).
@@ -158,5 +176,29 @@ mod tests {
         assert!(out.contains("vercel@official"));
         assert!(out.contains("✓"));
         assert!(out.contains("1 plugins"));
+    }
+
+    #[test]
+    fn json_summary_counts_only_enabled() {
+        let mut on = sample(); // enabled
+        on.id = "on@m".into();
+        let mut off = sample(); // disabled
+        off.id = "off@m".into();
+        let cost = on.est_tokens();
+        assert!(cost > 0);
+
+        let out = list_json(&[on.clone(), off], &|id| id == "on@m").unwrap();
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v["plugins"][0]["estTokens"], cost);
+        assert_eq!(v["summary"]["totalEst"], cost * 2);
+        assert_eq!(v["summary"]["enabledEst"], cost); // only the enabled one
+    }
+
+    #[test]
+    fn table_shows_cost_column_and_footer() {
+        let out = list_table(&[sample()], &|_| true);
+        assert!(out.contains("COST"));
+        assert!(out.contains(&format!("~{}", sample().est_tokens())));
+        assert!(out.contains("tok enabled"));
     }
 }

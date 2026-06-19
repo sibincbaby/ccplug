@@ -52,7 +52,15 @@ fn dirs_from(f: &CommonFlags) -> Result<(PathBuf, PathBuf)> {
 
 fn cmd_list(f: CommonFlags) -> Result<()> {
     let (home, project) = dirs_from(&f)?;
-    let plugins = inventory::load(&home)?;
+    let mut plugins = inventory::load(&home)?; // already name-sorted
+    if f.sort == cli::SortKey::Cost {
+        // expensive first; tie-break by name to stay deterministic
+        plugins.sort_by(|a, b| {
+            b.est_tokens()
+                .cmp(&a.est_tokens())
+                .then_with(|| a.name.cmp(&b.name))
+        });
+    }
     let eff = settings::effective(&project, &home)?;
     let is_enabled = |id: &str| eff.plugins.iter().any(|(k, b, _)| k == id && *b);
 

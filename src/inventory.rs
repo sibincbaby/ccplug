@@ -25,6 +25,22 @@ pub struct Skill {
     pub owner: String, // "plugin" | "loose"
 }
 
+/// Rough chars→tokens heuristic (~4 chars/token). For relative ranking, not billing.
+pub fn est_tokens(text: &str) -> u32 {
+    (text.chars().count() / 4) as u32
+}
+
+impl Plugin {
+    /// Estimated always-on token cost = Σ over skills of est_tokens(name + description).
+    /// Per spec §2, only skill descriptions load at session start (bodies are lazy).
+    pub fn est_tokens(&self) -> u32 {
+        self.skills
+            .iter()
+            .map(|s| est_tokens(&format!("{}\n{}", s.name, s.description)))
+            .sum()
+    }
+}
+
 /// Load every user-scope-installed plugin from installed_plugins.json, with skills + provides.
 pub fn load(home: &Path) -> Result<Vec<Plugin>> {
     let path = home.join(".claude/plugins/installed_plugins.json");
@@ -204,6 +220,46 @@ mod tests {
     fn splits_id_on_last_at() {
         assert_eq!(split_id("vercel@mkt"), ("vercel".into(), "mkt".into()));
         assert_eq!(split_id("a@b@c"), ("a@b".into(), "c".into()));
+    }
+
+    fn skill(name: &str, desc: &str) -> Skill {
+        Skill {
+            name: name.into(),
+            description: desc.into(),
+            owner: "plugin".into(),
+        }
+    }
+
+    #[test]
+    fn est_tokens_heuristic() {
+        assert_eq!(est_tokens(""), 0);
+        assert!(est_tokens("a longer string here") > est_tokens("short"));
+        // ~600 chars should land in the 100–200 tok ballpark (claude's per-skill range).
+        let n = est_tokens(&"x".repeat(600));
+        assert!((100..=200).contains(&n), "est {n} out of ballpark");
+    }
+
+    #[test]
+    fn plugin_cost_sums_skills_and_zero_when_empty() {
+        let empty = Plugin {
+            id: "e@m".into(),
+            name: "e".into(),
+            marketplace: "m".into(),
+            version: "1".into(),
+            install_path: Default::default(),
+            provides: vec![],
+            skills: vec![],
+        };
+        assert_eq!(empty.est_tokens(), 0);
+
+        let two = Plugin {
+            skills: vec![skill("a", &"x".repeat(80)), skill("b", &"y".repeat(80))],
+            ..empty.clone()
+        };
+        let expected = est_tokens(&format!("a\n{}", "x".repeat(80)))
+            + est_tokens(&format!("b\n{}", "y".repeat(80)));
+        assert_eq!(two.est_tokens(), expected);
+        assert!(two.est_tokens() > 0);
     }
 
     #[test]
