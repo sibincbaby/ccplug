@@ -76,12 +76,19 @@ fn cmd_status(f: CommonFlags) -> Result<()> {
     let (home, project) = dirs_from(&f)?;
     let eff = settings::effective(&project, &home)?;
 
-    // Estimated always-on cost of plugins effectively enabled in this project.
+    // Per-plugin estimated always-on cost, keyed by id (0 if the plugin isn't installed).
     let inv = inventory::load(&home)?;
-    let enabled_est: u32 = inv
+    let cost_of = |id: &str| -> u32 {
+        inv.iter()
+            .find(|p| p.id == id)
+            .map(|p| p.est_tokens())
+            .unwrap_or(0)
+    };
+    let enabled_est: u32 = eff
+        .plugins
         .iter()
-        .filter(|p| eff.plugins.iter().any(|(id, on, _)| id == &p.id && *on))
-        .map(|p| p.est_tokens())
+        .filter(|(_, on, _)| *on)
+        .map(|(id, _, _)| cost_of(id))
         .sum();
 
     if f.json {
@@ -89,7 +96,7 @@ fn cmd_status(f: CommonFlags) -> Result<()> {
             .plugins
             .iter()
             .map(|(id, on, src)| {
-                serde_json::json!({ "id": id, "enabled": on, "source": src.as_str() })
+                serde_json::json!({ "id": id, "enabled": on, "source": src.as_str(), "estTokens": cost_of(id) })
             })
             .collect();
         let overrides: serde_json::Map<String, serde_json::Value> = eff
@@ -116,11 +123,12 @@ fn cmd_status(f: CommonFlags) -> Result<()> {
         use comfy_table::Table;
         let mut t = Table::new();
         t.load_preset(UTF8_BORDERS_ONLY);
-        t.set_header(vec!["PLUGIN", "ON", "SOURCE"]);
+        t.set_header(vec!["PLUGIN", "ON", "COST (tok)", "SOURCE"]);
         for (id, on, src) in &eff.plugins {
             t.add_row(vec![
                 id.clone(),
                 if *on { "✓".into() } else { "·".into() },
+                format!("~{}", cost_of(id)),
                 src.as_str().to_string(),
             ]);
         }

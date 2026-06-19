@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.1
+
+- `ccplug status` now shows a per-plugin **COST (tok)** column (it previously only had the `enabledEst` total); `status --json` adds `estTokens` per effective plugin.
+- Cost column headers in both `list` and `status` are labelled `COST (tok)` so the numbers read as tokens.
+
 ## 0.2.0
 
 Cost-aware listing.

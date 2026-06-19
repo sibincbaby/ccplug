@@ -32,7 +32,7 @@ pub fn list_json(plugins: &[Plugin], enabled: &dyn Fn(&str) -> bool) -> Result<S
 pub fn list_table(plugins: &[Plugin], enabled: &dyn Fn(&str) -> bool) -> String {
     let mut table = Table::new();
     table.load_preset(UTF8_BORDERS_ONLY);
-    table.set_header(vec!["PLUGIN", "ON", "COST", "PROVIDES", "SKILLS"]);
+    table.set_header(vec!["PLUGIN", "ON", "COST (tok)", "PROVIDES", "SKILLS"]);
     let (mut total, mut enabled_total) = (0u32, 0u32);
     for p in plugins {
         let cost = p.est_tokens();
