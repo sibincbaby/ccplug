@@ -196,3 +196,37 @@ fn list_sort_cost_orders_expensive_first() {
     assert_eq!(v["summary"]["enabledEst"], v["summary"]["totalEst"]);
     assert_eq!(v["summary"]["totalEst"].as_u64().unwrap(), pricey + cheap);
 }
+
+#[test]
+fn status_enabled_est_matches_list_summary() {
+    let home = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+    fake_home_two(home.path());
+    // disable the pricey one at project scope → enabledEst should drop to cheap's cost
+    run(
+        home.path(),
+        project.path(),
+        &["disable", "pricey", "--json"],
+    )
+    .success();
+
+    let list_out = run(home.path(), project.path(), &["list", "--json"]).success();
+    let lv: Value = serde_json::from_slice(&list_out.get_output().stdout).unwrap();
+    let list_enabled = lv["summary"]["enabledEst"].as_u64().unwrap();
+
+    let status_out = run(home.path(), project.path(), &["status", "--json"]).success();
+    let sv: Value = serde_json::from_slice(&status_out.get_output().stdout).unwrap();
+    let status_enabled = sv["enabledEst"].as_u64().unwrap();
+
+    assert_eq!(status_enabled, list_enabled, "status & list must agree");
+    // pricey disabled → its cost excluded; cheap still counts
+    let cheap = lv["plugins"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["name"] == "cheap")
+        .unwrap()["estTokens"]
+        .as_u64()
+        .unwrap();
+    assert_eq!(status_enabled, cheap);
+}

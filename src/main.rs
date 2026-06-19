@@ -76,6 +76,14 @@ fn cmd_status(f: CommonFlags) -> Result<()> {
     let (home, project) = dirs_from(&f)?;
     let eff = settings::effective(&project, &home)?;
 
+    // Estimated always-on cost of plugins effectively enabled in this project.
+    let inv = inventory::load(&home)?;
+    let enabled_est: u32 = inv
+        .iter()
+        .filter(|p| eff.plugins.iter().any(|(id, on, _)| id == &p.id && *on))
+        .map(|p| p.est_tokens())
+        .sum();
+
     if f.json {
         let plugins: Vec<serde_json::Value> = eff
             .plugins
@@ -100,6 +108,7 @@ fn cmd_status(f: CommonFlags) -> Result<()> {
                 },
                 "effectivePlugins": plugins,
                 "skillOverrides": overrides,
+                "enabledEst": enabled_est,
             }))?
         );
     } else {
@@ -117,6 +126,7 @@ fn cmd_status(f: CommonFlags) -> Result<()> {
         }
         println!("project: {}", project.display());
         println!("{t}");
+        println!("enabled cost: ~{enabled_est} tok (est. always-on from skill descriptions)");
         if !eff.overrides.is_empty() {
             println!("skillOverrides:");
             for (k, v) in &eff.overrides {
