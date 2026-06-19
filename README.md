@@ -8,13 +8,17 @@ Built to be driven identically by a human or by Claude itself (ships a `SKILL.md
 
 ## Install
 
-From source (no published release yet):
+```bash
+cargo install ccplug
+```
+
+Or grab a prebuilt Linux binary (downloads the latest release tarball into `/usr/local/bin`, override with `DEST=`):
 
 ```bash
-./install.sh            # cargo build --release → ~/.local/bin/ccplug
-# or
-cargo install --path .
+curl -fsSL https://raw.githubusercontent.com/sibincbaby/ccplug/main/install.sh | bash
 ```
+
+Or from a checkout: `cargo install --path .`
 
 ## Commands
 
