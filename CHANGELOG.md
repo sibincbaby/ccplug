@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+- **ccplug is now also a Claude Code plugin.** The repo is a self-hosted marketplace (`.claude-plugin/marketplace.json` + `plugin.json`); `SKILL.md` moved to `skills/ccplug/SKILL.md`. Install with `claude plugin marketplace add sibincbaby/ccplug && claude plugin install ccplug@ccplug`.
+- New `ccplug skill install` subcommand writes the bundled skill (embedded in the binary) to `~/.claude/skills/ccplug/SKILL.md`; `--force` refreshes, `--dry-run` previews. `install.sh` now runs it automatically.
+- Skill/README guidance: decide which plugins to enable by reading each skill's **description** (features), not its name; weigh fit × cost; re-evaluate the subset as the work changes.
+
 ## 0.2.1
 
 - `ccplug status` now shows a per-plugin **COST (tok)** column (it previously only had the `enabledEst` total); `status --json` adds `estTokens` per effective plugin.

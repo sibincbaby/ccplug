@@ -14,3 +14,6 @@ curl -fsSL "$url" | tar xz -C "$tmp"
 install -m 0755 "$tmp/${BIN}" "${DEST}/${BIN}"
 rm -rf "$tmp"
 echo "Installed ${BIN} to ${DEST}/${BIN}"
+
+# Drop the agent-facing skill into ~/.claude/skills (idempotent; --force to refresh)
+"${DEST}/${BIN}" skill install || true

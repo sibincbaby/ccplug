@@ -230,3 +230,41 @@ fn status_enabled_est_matches_list_summary() {
         .unwrap();
     assert_eq!(status_enabled, cheap);
 }
+
+#[test]
+fn skill_install_writes_then_respects_existing() {
+    let home = tempfile::tempdir().unwrap();
+    let dest = home.path().join(".claude/skills/ccplug/SKILL.md");
+
+    // dry-run writes nothing
+    Command::cargo_bin("ccplug")
+        .unwrap()
+        .args(["skill", "install", "--dry-run", "--home-dir"])
+        .arg(home.path())
+        .assert()
+        .success();
+    assert!(!dest.exists(), "dry-run must not write");
+
+    // real install writes the embedded skill
+    Command::cargo_bin("ccplug")
+        .unwrap()
+        .args(["skill", "install", "--home-dir"])
+        .arg(home.path())
+        .assert()
+        .success();
+    let body = fs::read_to_string(&dest).unwrap();
+    assert!(
+        body.contains("name: ccplug"),
+        "embedded SKILL.md frontmatter"
+    );
+
+    // second run without --force leaves it (idempotent), reports already installed
+    let out = Command::cargo_bin("ccplug")
+        .unwrap()
+        .args(["skill", "install", "--home-dir"])
+        .arg(home.path())
+        .assert()
+        .success();
+    let text = String::from_utf8_lossy(&out.get_output().stdout);
+    assert!(text.contains("already installed"), "should be idempotent");
+}

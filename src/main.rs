@@ -9,10 +9,13 @@ use clap::Parser;
 use std::io::Read;
 use std::path::PathBuf;
 
-use cli::{Cli, Command, CommonFlags, MutateArgs};
+use cli::{Cli, Command, CommonFlags, MutateArgs, SkillAction};
 use output::TargetResult;
 use settings::Change;
 use target::{resolve, Kind};
+
+/// The skill shipped with the plugin — embedded so `cargo install` users can drop it in.
+const SKILL_MD: &str = include_str!("../skills/ccplug/SKILL.md");
 
 fn main() {
     let code = match run(Cli::parse()) {
@@ -32,7 +35,42 @@ fn run(cli: Cli) -> Result<i32> {
         Command::Status(f) => cmd_status(f).map(|_| 0),
         Command::Enable(a) => cmd_mutate(a, true),
         Command::Disable(a) => cmd_mutate(a, false),
+        Command::Skill {
+            action:
+                SkillAction::Install {
+                    force,
+                    dry_run,
+                    home_dir,
+                },
+        } => cmd_skill_install(home_dir, force, dry_run),
     }
+}
+
+/// Write the embedded SKILL.md to ~/.claude/skills/ccplug/SKILL.md (a loose user skill).
+fn cmd_skill_install(home_dir: Option<String>, force: bool, dry_run: bool) -> Result<i32> {
+    let home = match home_dir {
+        Some(d) => PathBuf::from(d),
+        None => {
+            dirs::home_dir().ok_or_else(|| anyhow::anyhow!("cannot determine home directory"))?
+        }
+    };
+    let dest = home.join(".claude/skills/ccplug/SKILL.md");
+
+    if dry_run {
+        println!("would write {}", dest.display());
+        return Ok(0);
+    }
+    if dest.exists() && !force {
+        println!(
+            "ccplug skill already installed at {} (use --force to overwrite)",
+            dest.display()
+        );
+        return Ok(0);
+    }
+    std::fs::create_dir_all(dest.parent().unwrap())?;
+    std::fs::write(&dest, SKILL_MD)?;
+    println!("installed ccplug skill → {}", dest.display());
+    Ok(0)
 }
 
 /// Resolve the home (~/.claude parent) and project dir, honoring hidden test overrides.

@@ -1,0 +1,13 @@
+{
+  "name": "ccplug",
+  "version": "0.3.0",
+  "description": "Manage which Claude Code plugins and skills are enabled per project to cut startup/context cost. Ships a skill that drives the `ccplug` CLI; install the binary separately (cargo install ccplug).",
+  "homepage": "https://github.com/sibincbaby/ccplug",
+  "repository": "https://github.com/sibincbaby/ccplug",
+  "license": "MIT",
+  "keywords": ["claude", "plugins", "skills", "context", "cost"],
+  "author": {
+    "name": "sibincbaby",
+    "url": "https://github.com/sibincbaby"
+  }
+}

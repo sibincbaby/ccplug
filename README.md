@@ -20,6 +20,18 @@ curl -fsSL https://raw.githubusercontent.com/sibincbaby/ccplug/main/install.sh |
 
 Or from a checkout: `cargo install --path .`
 
+The `install.sh` path also installs the agent-facing skill automatically. `cargo install` only installs the binary — run `ccplug skill install` once afterwards to drop the skill in (it's embedded in the binary; `--force` refreshes it).
+
+### As a Claude Code plugin
+
+This repo is also a self-hosted plugin marketplace. The plugin ships the skill (not the binary), so install both:
+
+```bash
+cargo install ccplug                            # the CLI the skill drives
+claude plugin marketplace add sibincbaby/ccplug
+claude plugin install ccplug@ccplug             # the skill
+```
+
 ## Commands
 
 ```
@@ -28,9 +40,18 @@ ccplug list --sort cost      # rank plugins by estimated always-on token cost (e
 ccplug status                # what is EFFECTIVELY active in the cwd project after the cascade
 ccplug enable  <target>...   # bulk enable
 ccplug disable <target>...   # bulk disable
+ccplug skill install         # write the bundled skill to ~/.claude/skills/ccplug (--force to refresh)
 ```
 
 `list` shows a **COST** column — an estimate of each plugin's always-on token cost (its skill descriptions, which load every session) — with a footer totalling enabled vs all. `status` reports the project's enabled cost (`enabledEst`). Cost is a local `chars/4` estimate; `claude plugin details <name>` gives exact numbers.
+
+### Deciding what to enable (for Claude, or you)
+
+`ccplug list --json` returns each skill with its own `description` — the "what it does + when to use it" summary (the same text Claude uses to decide when to fire a skill). **Decide by description, not by plugin name.** A name like `vercel` says little; its skills' descriptions tell you whether this project will ever call them. Only open a skill's full `SKILL.md` body if a description is genuinely ambiguous — bodies are large and lazy-loaded, so reading them wholesale re-pays the very context tax ccplug removes.
+
+Weigh **fit × cost**: a high-`estTokens` skill the project will never trigger is the first to disable; a cheap, occasionally-useful one can stay.
+
+The right subset is **dynamic** — re-run `list` and adjust when the task moves into a new domain, a skill keeps not firing, or a newly-installed plugin appears. ccplug governs only the *already-installed* global set; discovering and installing a new plugin from a marketplace is a separate `claude plugin install` step, after which it shows up here like any other.
 
 ### Targets
 

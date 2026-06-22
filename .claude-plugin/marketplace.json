@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "ccplug",
+  "description": "ccplug — per-project Claude Code plugin/skill enablement to cut startup/context cost.",
+  "owner": {
+    "name": "sibincbaby",
+    "url": "https://github.com/sibincbaby"
+  },
+  "plugins": [
+    {
+      "name": "ccplug",
+      "source": "./",
+      "description": "Manage which globally-installed plugins/skills are enabled per project. Requires the `ccplug` CLI on PATH.",
+      "category": "productivity"
+    }
+  ]
+}

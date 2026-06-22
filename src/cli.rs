@@ -21,6 +21,29 @@ pub enum Command {
     Enable(MutateArgs),
     /// Disable plugins/skills for the chosen scope
     Disable(MutateArgs),
+    /// Manage the bundled ccplug skill itself
+    Skill {
+        #[command(subcommand)]
+        action: SkillAction,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum SkillAction {
+    /// Install the bundled ccplug skill into ~/.claude/skills/ccplug (loose user skill)
+    Install {
+        /// Overwrite an existing install
+        #[arg(long)]
+        force: bool,
+
+        /// Print the destination, write nothing
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Override ~/.claude location (for tests)
+        #[arg(long, hide = true)]
+        home_dir: Option<String>,
+    },
 }
 
 #[derive(Args, Debug, Clone)]

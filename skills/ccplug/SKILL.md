@@ -7,24 +7,30 @@ description: Use when you want to reduce a project's Claude Code startup/context
 
 A fast CLI to control **which globally-installed Claude Code plugins are enabled per project**. Everything stays installed globally (auto-update on); ccplug writes a per-project enabled subset into `.claude/settings.json`, so a project only pays the context cost of the plugins it needs.
 
+**Prerequisite:** this skill drives the `ccplug` binary — it does not ship it. If `ccplug` is not on PATH, tell the user to install it (`cargo install ccplug`, or the `install.sh` one-liner in the README) and stop; do not try to build it from source yourself.
+
 ## The loop (do this)
 
 1. **See the inventory + current state:**
    ```bash
    ccplug list --json
    ```
-   → every global plugin with `id`, `enabled`, `provides`, and its `skills`.
+   → every global plugin with `id`, `enabled`, `provides`, and its `skills` — and **each skill carries its own `description`**.
 
-2. **Decide the subset** this project needs (e.g. a Nuxt app probably wants `vercel` but not `firebase` or the Python LSPs).
+2. **Decide the subset by reading descriptions, not names.** Each skill's `description` is its "what it does + when to use it" summary (the same text Claude uses to decide when to fire the skill). Judge fit from that, not the plugin name. A name like `vercel` tells you little; its skills' descriptions tell you whether this project will ever call them. Only crack open a skill's full `SKILL.md` body if a description is genuinely ambiguous — bodies are large and lazy-loaded, so reading them wholesale re-pays the very context tax ccplug exists to remove.
 
-3. **Apply** — disable what's not needed (or enable a curated set). Bulk via positional args or a JSON array on stdin:
+   Decide on **fit × cost**: a high `estTokens` skill the project will never trigger is the first to disable; a cheap, occasionally-useful one can stay.
+
+3. **Re-evaluate when the work changes, not just at startup.** The right subset is dynamic. Re-run `ccplug list --json` and adjust when: the task moves into a new domain (added a DB → maybe enable its plugin), a skill keeps not firing (disable it), or a newly-installed plugin appears in the list. ccplug only governs the *already-installed* global set — discovering and installing a new plugin from a marketplace is a separate `claude plugin install` step; once installed it shows up here and you reason about it like any other.
+
+4. **Apply** — disable what's not needed (or enable a curated set). Bulk via positional args or a JSON array on stdin:
    ```bash
    ccplug disable firebase pyright-lsp --json
    ccplug enable --stdin --json <<< '["vercel","ponytail"]'
    ```
    Preview first with `--dry-run`.
 
-4. **Verify:**
+5. **Verify:**
    ```bash
    ccplug status --json
    ```
