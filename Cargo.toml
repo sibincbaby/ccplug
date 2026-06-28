@@ -1,6 +1,6 @@
 [package]
 name = "ccplug"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 description = "Manage which Claude Code plugins and skills are enabled per project"
 repository = "https://github.com/sibincbaby/ccplug"

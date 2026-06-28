@@ -63,6 +63,7 @@ A bare `plugin` name auto-resolves to `name@marketplace`. If a name exists in tw
 
 - Mutations only touch `enabledPlugins` / `skillOverrides`; all other settings keys are preserved.
 - The target settings file is backed up to `<file>.bak` before the first write.
+- **ccplug refuses to disable itself.** A `disable` target that resolves to ccplug (its own plugin or a loose `ccplug` skill) returns `{"ok":false,"reason":"self-protect: refusing to disable ccplug"}` and does not fail the rest of the batch — disabling it would remove the very tool running the command. Enabling ccplug is allowed.
 - Restart the Claude Code session for changes to take effect.
 
 This skill leaves `disable-model-invocation` unset — you may invoke `ccplug`. Mutations are project-scoped and reversible; prefer `--dry-run` first when unsure.

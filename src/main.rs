@@ -207,6 +207,15 @@ fn parse_target_array(text: &str) -> Result<Vec<String>> {
         .map_err(|e| anyhow::anyhow!("expected a JSON array of target strings: {e}"))
 }
 
+/// True if a resolved target is ccplug itself — its plugin (`ccplug@<market>`) or a
+/// loose skill named `ccplug`. Used to self-protect against disabling the running tool.
+fn targets_ccplug(r: &target::Resolved) -> bool {
+    r.plugin_id
+        .as_deref()
+        .is_some_and(|id| id.split('@').next() == Some("ccplug"))
+        || r.skill.as_deref() == Some("ccplug")
+}
+
 fn cmd_mutate(a: MutateArgs, enable: bool) -> Result<i32> {
     let f = a.common.clone();
     let (home, project) = dirs_from(&f)?;
@@ -236,6 +245,18 @@ fn cmd_mutate(a: MutateArgs, enable: bool) -> Result<i32> {
                 ok: false,
                 action: None,
                 reason: r.reason.clone(),
+            });
+            continue;
+        }
+
+        // Self-protect: never let a disable remove ccplug itself — the tool running this.
+        if !enable && targets_ccplug(&r) {
+            results.push(TargetResult {
+                target: raw.clone(),
+                kind: kind.to_string(),
+                ok: false,
+                action: None,
+                reason: Some("self-protect: refusing to disable ccplug".to_string()),
             });
             continue;
         }

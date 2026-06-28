@@ -268,3 +268,42 @@ fn skill_install_writes_then_respects_existing() {
     let text = String::from_utf8_lossy(&out.get_output().stdout);
     assert!(text.contains("already installed"), "should be idempotent");
 }
+
+#[test]
+fn refuses_to_disable_itself() {
+    let home = tempfile::tempdir().unwrap();
+    let project = tempfile::tempdir().unwrap();
+
+    // fake ccplug installed as a user-scope plugin (the marketplace scenario)
+    let install = home.path().join("install/ccplug/0.3.0");
+    fs::create_dir_all(install.join("skills/ccplug")).unwrap();
+    fs::write(
+        install.join("skills/ccplug/SKILL.md"),
+        "---\nname: ccplug\ndescription: self\n---\n",
+    )
+    .unwrap();
+    let pdir = home.path().join(".claude/plugins");
+    fs::create_dir_all(&pdir).unwrap();
+    let json = serde_json::json!({
+        "version": 2,
+        "plugins": { "ccplug@ccplug": [
+            {"scope": "user", "installPath": install.to_str().unwrap(), "version": "0.3.0"}
+        ]}
+    });
+    fs::write(pdir.join("installed_plugins.json"), json.to_string()).unwrap();
+
+    // disable ccplug → refused; the only target failed → exit 2
+    let out = run(
+        home.path(),
+        project.path(),
+        &["disable", "ccplug", "--json"],
+    )
+    .code(2);
+    let v: Value = serde_json::from_slice(&out.get_output().stdout).unwrap();
+    let res = &v["results"][0];
+    assert_eq!(res["ok"], false);
+    assert!(res["reason"].as_str().unwrap().contains("self-protect"));
+
+    // enabling ccplug is still allowed
+    run(home.path(), project.path(), &["enable", "ccplug", "--json"]).success();
+}

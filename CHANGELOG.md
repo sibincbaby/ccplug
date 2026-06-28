@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1
+
+- **Self-protect:** `ccplug disable` now refuses any target that resolves to ccplug itself (its plugin or a loose `ccplug` skill) — returns `{"ok":false,"reason":"self-protect: refusing to disable ccplug"}` without failing the rest of the batch. Enabling ccplug is still allowed.
+
 ## 0.3.0
 
 - **ccplug is now also a Claude Code plugin.** The repo is a self-hosted marketplace (`.claude-plugin/marketplace.json` + `plugin.json`); `SKILL.md` moved to `skills/ccplug/SKILL.md`. Install with `claude plugin marketplace add sibincbaby/ccplug && claude plugin install ccplug@ccplug`.
