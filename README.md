@@ -83,7 +83,7 @@ ccplug disable vercel --dry-run                      # preview (warns it also dr
 ccplug status --json
 ```
 
-Restart the Claude Code session for changes to take effect.
+Run `/reload-plugins` in Claude Code for changes to take effect, or restart the session if that doesn't pick it up (a full restart is always required in cloud/desktop sessions). `enable`/`disable` print this reminder automatically.
 
 ## v1 limits
 

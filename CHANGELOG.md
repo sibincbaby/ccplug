@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.2
+
+- **Reload reminder:** `ccplug enable`/`disable` now print a hint after any real write — `run /reload-plugins to apply, or restart Claude Code if that doesn't pick it up (always required in cloud/desktop sessions)`. Shown as a trailing line in human output and appended to `warnings` in `--json`; suppressed on `--dry-run` and no-op writes.
+- README/SKILL.md now point at `/reload-plugins` instead of a blanket "restart the session".
+
 ## 0.3.1
 
 - **Self-protect:** `ccplug disable` now refuses any target that resolves to ccplug itself (its plugin or a loose `ccplug` skill) — returns `{"ok":false,"reason":"self-protect: refusing to disable ccplug"}` without failing the rest of the batch. Enabling ccplug is still allowed.

@@ -319,7 +319,14 @@ fn cmd_mutate(a: MutateArgs, enable: bool) -> Result<i32> {
     if f.json {
         println!(
             "{}",
-            output::mutate_json(&file, f.scope.as_str(), a.dry_run, &results, &warnings)?
+            output::mutate_json(
+                &file,
+                f.scope.as_str(),
+                a.dry_run,
+                &results,
+                &warnings,
+                applied.wrote,
+            )?
         );
     } else {
         let diff = if a.dry_run {

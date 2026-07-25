@@ -75,14 +75,25 @@ pub struct TargetResult {
     pub reason: Option<String>,
 }
 
-/// `enable`/`disable` — JSON result per spec §6.
+/// Printed/appended after a real (non-dry-run) write so changes actually take effect
+/// in the running session — plugin/settings changes aren't picked up automatically.
+pub const RELOAD_HINT: &str =
+    "run /reload-plugins to apply, or restart Claude Code if that doesn't pick it up (always required in cloud/desktop sessions)";
+
+/// `enable`/`disable` — JSON result per spec §6, plus `warnings` gets a reload
+/// reminder appended when a write actually happened.
 pub fn mutate_json(
     file: &str,
     scope: &str,
     dry_run: bool,
     results: &[TargetResult],
     warnings: &[String],
+    wrote: bool,
 ) -> Result<String> {
+    let mut warnings = warnings.to_vec();
+    if wrote && !dry_run {
+        warnings.push(RELOAD_HINT.to_string());
+    }
     Ok(serde_json::to_string_pretty(&serde_json::json!({
         "file": file,
         "scope": scope,
@@ -126,6 +137,7 @@ pub fn mutate_human(
         if let Some(b) = backup {
             out.push_str(&format!("backup: {b}\n"));
         }
+        out.push_str(&format!("{RELOAD_HINT}\n"));
     } else {
         out.push_str(&format!("no changes ({file} already up to date)\n"));
     }
