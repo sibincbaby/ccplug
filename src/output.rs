@@ -78,7 +78,7 @@ pub struct TargetResult {
 /// Printed/appended after a real (non-dry-run) write so changes actually take effect
 /// in the running session — plugin/settings changes aren't picked up automatically.
 pub const RELOAD_HINT: &str =
-    "run /reload-plugins to apply, or restart Claude Code if that doesn't pick it up (always required in cloud/desktop sessions)";
+    "run /reload-plugins to apply, or restart Claude Code if that doesn't pick it up (cloud sessions never load user/local-scope plugins)";
 
 /// `enable`/`disable` — JSON result per spec §6, plus `warnings` gets a reload
 /// reminder appended when a write actually happened.
@@ -171,6 +171,7 @@ mod tests {
                 description: "x".into(),
                 owner: "plugin".into(),
             }],
+            extra_tokens: 0,
         }
     }
 

@@ -145,6 +145,7 @@ mod tests {
                     owner: "plugin".into(),
                 })
                 .collect(),
+            extra_tokens: 0,
         }
     }
 

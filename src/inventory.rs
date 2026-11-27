@@ -16,6 +16,9 @@ pub struct Plugin {
     pub install_path: PathBuf,
     pub provides: Vec<String>,
     pub skills: Vec<Skill>,
+    // Always-on tokens from agents/commands (Claude Code counts their descriptions too).
+    #[serde(skip)]
+    pub extra_tokens: u32,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -25,19 +28,26 @@ pub struct Skill {
     pub owner: String, // "plugin" | "loose"
 }
 
+/// Per-entry listing overhead Claude Code adds around each skill/agent/command (measured against
+/// `claude plugin details`: ~25-40 tok per skill, ~20 per agent/command).
+const SKILL_OVERHEAD: u32 = 30;
+const EXTRA_OVERHEAD: u32 = 20;
+
 /// Rough chars→tokens heuristic (~4 chars/token). For relative ranking, not billing.
 pub fn est_tokens(text: &str) -> u32 {
     (text.chars().count() / 4) as u32
 }
 
 impl Plugin {
-    /// Estimated always-on token cost = Σ over skills of est_tokens(name + description).
-    /// Per spec §2, only skill descriptions load at session start (bodies are lazy).
+    /// Estimated always-on token cost = Σ over skills of est_tokens(name + description),
+    /// plus agent/command descriptions. Bodies are lazy and not counted.
     pub fn est_tokens(&self) -> u32 {
-        self.skills
+        let skills: u32 = self
+            .skills
             .iter()
-            .map(|s| est_tokens(&format!("{}\n{}", s.name, s.description)))
-            .sum()
+            .map(|s| SKILL_OVERHEAD + est_tokens(&format!("{}\n{}", s.name, s.description)))
+            .sum();
+        skills + self.extra_tokens
     }
 }
 
@@ -88,6 +98,7 @@ pub fn load(home: &Path) -> Result<Vec<Plugin>> {
                 install_path: install_path.clone(),
                 provides,
                 skills,
+                extra_tokens: scan_extra_tokens(install_path),
             }
         })
         .collect();
@@ -138,6 +149,32 @@ fn scan_skills(base: &Path, owner: &str) -> Vec<Skill> {
     skills
 }
 
+/// Σ est_tokens(name + description) over `<install>/{agents,commands}/*.md`.
+fn scan_extra_tokens(install_path: &Path) -> u32 {
+    let mut total = 0;
+    for dir in ["agents", "commands"] {
+        let Ok(rd) = std::fs::read_dir(install_path.join(dir)) else {
+            continue;
+        };
+        for entry in rd.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("md") {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            let (name, desc) = parse_frontmatter(&text);
+            let name = name
+                .or_else(|| path.file_stem().map(|s| s.to_string_lossy().into_owned()))
+                .unwrap_or_default();
+            total +=
+                EXTRA_OVERHEAD + est_tokens(&format!("{}\n{}", name, desc.unwrap_or_default()));
+        }
+    }
+    total
+}
+
 /// What the plugin ships, by directory/file presence + plugin.json `lsp` key.
 fn detect_provides(install_path: &Path, skills: &[Skill]) -> Vec<String> {
     let mut p = Vec::new();
@@ -169,23 +206,54 @@ fn plugin_has_lsp(install_path: &Path) -> bool {
     }
 }
 
-/// Hand-split YAML frontmatter; returns (name, description). Flat keys only.
-// ponytail: flat frontmatter only; add serde_yaml if a skill needs nested/multiline keys.
+/// Hand-split YAML frontmatter; returns (name, description). Handles plain, quoted, block
+/// (`>`/`|`) and plain multi-line values for those two keys; other keys are ignored.
+// ponytail: not a full YAML parser; add serde_yaml if a skill needs nested keys or anchors.
 fn parse_frontmatter(text: &str) -> (Option<String>, Option<String>) {
     let mut lines = text.lines();
     if lines.next().map(|l| l.trim()) != Some("---") {
         return (None, None);
     }
     let (mut name, mut desc) = (None, None);
-    for line in lines {
+    let mut lines = lines.peekable();
+    while let Some(line) = lines.next() {
         let t = line.trim_end();
         if t.trim() == "---" {
             break;
         }
-        if let Some(v) = t.strip_prefix("name:") {
-            name = Some(unquote(v.trim()));
+        let (key, v) = if let Some(v) = t.strip_prefix("name:") {
+            ("name", v)
         } else if let Some(v) = t.strip_prefix("description:") {
-            desc = Some(unquote(v.trim()));
+            ("description", v)
+        } else {
+            continue;
+        };
+        // Indented lines after the key belong to its value (block scalar or plain continuation).
+        let mut cont = Vec::new();
+        while let Some(next) = lines.peek() {
+            if next.trim().is_empty() || next.starts_with(' ') || next.starts_with('\t') {
+                cont.push(lines.next().unwrap().trim());
+            } else {
+                break;
+            }
+        }
+        let v = v.trim();
+        let value = if v.starts_with('>') || v.starts_with('|') {
+            let sep = if v.starts_with('>') { " " } else { "\n" };
+            cont.iter()
+                .filter(|l| !l.is_empty())
+                .copied()
+                .collect::<Vec<_>>()
+                .join(sep)
+        } else {
+            let mut parts = vec![v];
+            parts.extend(cont.iter().filter(|l| !l.is_empty()));
+            unquote(&parts.join(" "))
+        };
+        if key == "name" {
+            name = Some(value);
+        } else {
+            desc = Some(value);
         }
     }
     (name, desc)
@@ -214,6 +282,38 @@ mod tests {
         let (n, d) = parse_frontmatter("---\nname: foo\ndescription: \"does X\"\n---\nbody");
         assert_eq!(n.as_deref(), Some("foo"));
         assert_eq!(d.as_deref(), Some("does X"));
+    }
+
+    #[test]
+    fn parses_folded_and_literal_block_descriptions() {
+        let (n, d) = parse_frontmatter(
+            "---\nname: foo\ndescription: >\n  line one\n  line two\nother: x\n---\nbody",
+        );
+        assert_eq!(n.as_deref(), Some("foo"));
+        assert_eq!(d.as_deref(), Some("line one line two"));
+        let (_, d) = parse_frontmatter("---\nname: f\ndescription: |-\n  a\n  b\n---\n");
+        assert_eq!(d.as_deref(), Some("a\nb"));
+        let (_, d) = parse_frontmatter("---\nname: f\ndescription: plain\n  more\n---\n");
+        assert_eq!(d.as_deref(), Some("plain more"));
+    }
+
+    #[test]
+    fn agents_and_commands_count_toward_cost() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("agents")).unwrap();
+        fs::create_dir_all(dir.path().join("commands")).unwrap();
+        fs::write(
+            dir.path().join("agents/a.md"),
+            format!("---\nname: a\ndescription: {}\n---\n", "x".repeat(80)),
+        )
+        .unwrap();
+        fs::write(
+            dir.path().join("commands/c.md"),
+            format!("---\ndescription: \"{}\"\n---\n", "y".repeat(80)),
+        )
+        .unwrap();
+        assert!(scan_extra_tokens(dir.path()) >= 40);
+        assert_eq!(scan_extra_tokens(Path::new("/no/such")), 0);
     }
 
     #[test]
@@ -249,6 +349,7 @@ mod tests {
             install_path: Default::default(),
             provides: vec![],
             skills: vec![],
+            extra_tokens: 0,
         };
         assert_eq!(empty.est_tokens(), 0);
 
@@ -256,7 +357,8 @@ mod tests {
             skills: vec![skill("a", &"x".repeat(80)), skill("b", &"y".repeat(80))],
             ..empty.clone()
         };
-        let expected = est_tokens(&format!("a\n{}", "x".repeat(80)))
+        let expected = 2 * SKILL_OVERHEAD
+            + est_tokens(&format!("a\n{}", "x".repeat(80)))
             + est_tokens(&format!("b\n{}", "y".repeat(80)));
         assert_eq!(two.est_tokens(), expected);
         assert!(two.est_tokens() > 0);

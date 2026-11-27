@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.3
+
+- **Cost accuracy:** the frontmatter parser now handles YAML block scalars (`description: >` / `|`) and multi-line plain values — previously such descriptions were read as the literal `>` (e.g. ponytail showed ~19 tok instead of ~600).
+- Cost now also counts **agent and command descriptions** (Claude Code counts them) and a small per-entry listing overhead. Estimates now land within ~12% of `claude plugin details` for the plugins checked (was off by up to 30x).
+- `.claude-plugin/plugin.json` version re-synced with `Cargo.toml` (it had stayed at 0.3.1).
+- Docs: `/reload-plugins` works in the desktop app and SDK sessions since Claude Code v2.1.260; cloud sessions don't load user/local-scope plugins at all.
+
 ## 0.3.2
 
 - **Reload reminder:** `ccplug enable`/`disable` now print a hint after any real write — `run /reload-plugins to apply, or restart Claude Code if that doesn't pick it up (always required in cloud/desktop sessions)`. Shown as a trailing line in human output and appended to `warnings` in `--json`; suppressed on `--dry-run` and no-op writes.

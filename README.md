@@ -43,7 +43,7 @@ ccplug disable <target>...   # bulk disable
 ccplug skill install         # write the bundled skill to ~/.claude/skills/ccplug (--force to refresh)
 ```
 
-`list` shows a **COST** column — an estimate of each plugin's always-on token cost (its skill descriptions, which load every session) — with a footer totalling enabled vs all. `status` reports the project's enabled cost (`enabledEst`). Cost is a local `chars/4` estimate; `claude plugin details <name>` gives exact numbers.
+`list` shows a **COST** column — an estimate of each plugin's always-on token cost (its skill, agent and command descriptions, which load every session) — with a footer totalling enabled vs all. `status` reports the project's enabled cost (`enabledEst`). Cost is a local `chars/4` estimate; `claude plugin details <name>` gives exact numbers.
 
 ### Deciding what to enable (for Claude, or you)
 
@@ -83,7 +83,7 @@ ccplug disable vercel --dry-run                      # preview (warns it also dr
 ccplug status --json
 ```
 
-Run `/reload-plugins` in Claude Code for changes to take effect, or restart the session if that doesn't pick it up (a full restart is always required in cloud/desktop sessions). `enable`/`disable` print this reminder automatically.
+Run `/reload-plugins` in Claude Code for changes to take effect, or restart the session if that doesn't pick it up (works in the desktop app since v2.1.260; cloud sessions never load user/local-scope plugins). `enable`/`disable` print this reminder automatically.
 
 ## v1 limits
 
